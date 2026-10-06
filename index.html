@@ -24,7 +24,7 @@ h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.02em}
 .ghost{background:none;border:1px solid var(--line);color:var(--mut);border-radius:10px;padding:8px 12px;font:inherit;font-size:14px}
 .clock{background:var(--surf);border:1px solid var(--line);border-radius:22px;padding:24px 20px;text-align:center}
 .time{font-size:56px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--mut);transition:color .2s}
-.run .time{color:var(--tx)}
+.on .time{color:var(--tx)}
 .state{display:flex;justify-content:center;align-items:center;gap:8px;color:var(--mut);font-size:14px;height:20px}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--line)}
 .run .dot{background:var(--rec);animation:p 1.4s ease-in-out infinite}
@@ -33,7 +33,7 @@ h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.02em}
 input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--tx);border-radius:12px;padding:13px 14px;font:inherit;margin-top:10px}
 input:focus,button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .go{width:100%;margin-top:16px;border:0;border-radius:16px;padding:18px;font:inherit;font-size:18px;font-weight:600;background:var(--acc);color:#06121f}
-.run .go{background:var(--rec);color:#fff}
+.btns{display:flex;gap:10px;margin-top:16px}.btns .go{margin-top:0;flex:1}.on #go{background:var(--bg);border:1px solid var(--line);color:var(--tx)}.paused #go{background:var(--acc);border:0;color:#06121f}#fin{background:var(--rec);color:#fff}.paused .dot{background:#f5a524}
 .go:active{transform:scale(.98)}
 .sum{display:flex;gap:10px;margin:20px 0 6px}
 .sum div{flex:1;background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:12px}
@@ -45,10 +45,22 @@ input:focus,button:focus-visible{outline:2px solid var(--acc);outline-offset:2px
 .row .d{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
 .row button{background:none;border:0;color:var(--mut);font-size:13px;padding:2px 0}
 .empty{color:var(--mut);text-align:center;margin-top:30px}
+.hb{display:flex;gap:8px}.adj{width:100%;margin-top:12px}
+.row{cursor:pointer}.row:active{background:var(--bg)}
+dialog{border:1px solid var(--line);background:var(--surf);color:var(--tx);border-radius:22px;padding:20px;width:min(92vw,520px);margin:auto auto calc(env(safe-area-inset-bottom) + 12px)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h2{margin:0 0 4px;font-size:19px}
+dialog label{display:block;color:var(--mut);font-size:13px;margin-top:12px}
+dialog input{margin-top:6px;min-height:46px;text-align:left}
+dialog [hidden]{display:none!important}
+#e-sum{color:var(--mut);font-size:14px;margin:14px 0 0;min-height:20px}
+.btns .ghost{flex:1;padding:16px;font-size:16px}
+.del{width:100%;margin-top:10px;color:var(--rec)}
+.hint{color:var(--mut);font-size:13px;margin:16px 4px 0}
 </style>
 </head>
 <body>
-<header><h1>Heures</h1><button class="ghost" id="exp">Exporter CSV</button></header>
+<header><h1>Heures</h1><div class="hb"><button class="ghost" id="add">+ Entrée</button><button class="ghost" id="exp">Exporter CSV</button></div></header>
 <main id="app">
   <section class="clock" id="clock">
     <div class="time" id="time">00:00:00</div>
@@ -56,17 +68,31 @@ input:focus,button:focus-visible{outline:2px solid var(--acc);outline-offset:2px
     <input id="client" list="cl" placeholder="Client ou projet" autocomplete="off">
     <datalist id="cl"></datalist>
     <input id="note" placeholder="Note (optionnel)" autocomplete="off">
-    <button class="go" id="go">Démarrer</button>
+    <button class="ghost adj" id="adj" hidden>Ajuster l'heure de début</button>
+    <div class="btns"><button class="go" id="go">Démarrer</button><button class="go" id="fin" hidden>Terminer</button></div>
   </section>
   <div class="sum"><div><b id="t1">0h00</b><span>Aujourd'hui</span></div><div><b id="t2">0h00</b><span>Cette semaine</span></div></div>
   <div id="hist"></div>
 </main>
+<dialog id="dlg"><div>
+  <h2 id="dt">Modifier</h2>
+  <label>Début<input type="datetime-local" id="e-s"></label>
+  <label id="l-e">Fin<input type="datetime-local" id="e-e"></label>
+  <label id="l-p">Pause (minutes)<input type="number" id="e-p" min="0" inputmode="numeric"></label>
+  <label>Client ou projet<input id="e-c" list="cl" autocomplete="off"></label>
+  <label>Note<input id="e-n" autocomplete="off"></label>
+  <p id="e-sum"></p>
+  <div class="btns"><button type="button" class="ghost" id="e-x">Annuler</button><button type="button" class="go" id="e-ok">Enregistrer</button></div>
+  <button type="button" class="ghost del" id="e-d">Supprimer cette entrée</button>
+</div></dialog>
 <script>
 const K='heures.v1';
 let S={logs:[],run:null};
 try{S=Object.assign(S,JSON.parse(localStorage.getItem(K)||'{}'))}catch(e){}
 const $=id=>document.getElementById(id);
 const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
+const work=r=>r?(r.paused||Date.now())-r.start-(r.pt||0):0;
+const dur=l=>l.work!=null?l.work:dur(l);
 const pad=n=>String(n).padStart(2,'0');
 const hms=ms=>{const s=Math.floor(ms/1e3);return pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60)};
 const hm=ms=>{const m=Math.round(ms/6e4);return Math.floor(m/60)+'h'+pad(m%60)};
@@ -75,34 +101,87 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 function weekStart(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getTime()}
 function render(){
   const r=S.run;
-  $('clock').classList.toggle('run',!!r);
-  $('go').textContent=r?'Arrêter':'Démarrer';
-  $('st').textContent=r?'En cours'+(r.client?' · '+r.client:''):'Prêt';
+  $('clock').classList.toggle('run',!!r&&!r.paused);
+  $('clock').classList.toggle('on',!!r);
+  $('clock').classList.toggle('paused',!!(r&&r.paused));
+  $('go').textContent=!r?'Démarrer':r.paused?'Reprendre':'Pause';
+  $('fin').hidden=!r;$('adj').hidden=!r;
+  $('st').textContent=r?(r.paused?'En pause':'En cours')+(r.client?' · '+r.client:''):'Prêt';
   $('client').disabled=$('note').disabled=!!r;
   const cl=[...new Set(S.logs.map(l=>l.client).filter(Boolean))];
   $('cl').innerHTML=cl.map(c=>'<option value="'+esc(c)+'">').join('');
   const today=dkey(Date.now()),ws=weekStart();
-  let t1=0,t2=0;S.logs.forEach(l=>{const d=l.end-l.start;if(dkey(l.start)===today)t1+=d;if(l.start>=ws)t2+=d});
+  let t1=0,t2=0;S.logs.forEach(l=>{const d=dur(l);if(dkey(l.start)===today)t1+=d;if(l.start>=ws)t2+=d});
   $('t1').textContent=hm(t1);$('t2').textContent=hm(t2);
   const g={};[...S.logs].sort((a,b)=>b.start-a.start).forEach(l=>(g[dkey(l.start)]=g[dkey(l.start)]||[]).push(l));
   const fmt=new Intl.DateTimeFormat('fr-CA',{weekday:'long',day:'numeric',month:'long'});
   const tf=t=>new Date(t).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'});
-  $('hist').innerHTML=Object.keys(g).map(k=>{
-    const tot=g[k].reduce((a,l)=>a+l.end-l.start,0);
+  $('hist').innerHTML=(S.logs.length?'<p class="hint">Touche une entrée pour la modifier.</p>':'')+Object.keys(g).map(k=>{
+    const tot=g[k].reduce((a,l)=>a+dur(l),0);
     return '<div class="day"><div>'+esc(fmt.format(new Date(g[k][0].start)))+'</div><span>'+hm(tot)+'</span></div>'+
-    g[k].map(l=>'<div class="row"><div><p>'+esc(l.client||'Sans client')+'</p><small>'+tf(l.start)+' – '+tf(l.end)+(l.note?' · '+esc(l.note):'')+'</small></div><div class="d">'+hm(l.end-l.start)+'<br><button data-del="'+l.id+'">Supprimer</button></div></div>').join('')
+    g[k].map(l=>'<div class="row" data-id="'+l.id+'"><div><p>'+esc(l.client||'Sans client')+'</p><small>'+tf(l.start)+' – '+tf(l.end)+(l.note?' · '+esc(l.note):'')+'</small></div><div class="d">'+hm(dur(l))+'</div></div>').join('')
   }).join('')||'<p class="empty">Aucune entrée. Appuie sur Démarrer pour lancer ta première session.</p>';
 }
-function tick(){$('time').textContent=hms(S.run?Date.now()-S.run.start:0)}
+function tick(){$('time').textContent=hms(work(S.run))}
 $('go').onclick=()=>{
-  if(S.run){S.logs.push({id:Date.now().toString(36),start:S.run.start,end:Date.now(),client:S.run.client,note:S.run.note});S.run=null;$('note').value=''}
-  else S.run={start:Date.now(),client:$('client').value.trim(),note:$('note').value.trim()};
+  const r=S.run,now=Date.now();
+  if(!r)S.run={start:now,client:$('client').value.trim(),note:$('note').value.trim(),pt:0,paused:null};
+  else if(r.paused){r.pt=(r.pt||0)+now-r.paused;r.paused=null}
+  else r.paused=now;
   save();render();tick();
 };
-$('hist').onclick=e=>{const id=e.target.dataset.del;if(id&&confirm('Supprimer cette entrée?')){S.logs=S.logs.filter(l=>l.id!==id);save();render()}};
+$('fin').onclick=()=>{
+  const r=S.run;if(!r)return;
+  const now=Date.now(),w=work(r);
+  S.logs.push({id:now.toString(36),start:r.start,end:now,work:w,client:r.client,note:r.note});
+  S.run=null;$('note').value='';save();render();tick();
+};
+let E=null;
+const loc=t=>{const d=new Date(t);return dkey(t)+'T'+pad(d.getHours())+':'+pad(d.getMinutes())};
+const val=id=>new Date($(id).value).getTime();
+function upd(){
+  const st=val('e-s');let t='';
+  if(!isNaN(st)){
+    if(E.mode==='run')t='Temps travaillé : '+hm(work(Object.assign({},S.run,{start:st})));
+    else{const w=val('e-e')-st-(+$('e-p').value||0)*6e4;t=w>0?'Temps travaillé : '+hm(w):'La fin doit être après le début'}
+  }
+  $('e-sum').textContent=t;
+}
+function openDlg(mode,id){
+  E={mode,id};
+  $('l-e').hidden=$('l-p').hidden=mode==='run';
+  $('e-d').hidden=mode!=='log';
+  $('dt').textContent=mode==='run'?"Ajuster l'heure de début":mode==='new'?'Nouvelle entrée':"Modifier l'entrée";
+  if(mode==='log'){const l=S.logs.find(x=>x.id===id);$('e-s').value=loc(l.start);$('e-e').value=loc(l.end);$('e-p').value=Math.max(0,Math.round((l.end-l.start-dur(l))/6e4));$('e-c').value=l.client||'';$('e-n').value=l.note||''}
+  else if(mode==='run'){$('e-s').value=loc(S.run.start);$('e-c').value=S.run.client||'';$('e-n').value=S.run.note||''}
+  else{const n=Date.now();$('e-s').value=loc(n-36e5);$('e-e').value=loc(n);$('e-p').value=0;$('e-c').value='';$('e-n').value=''}
+  upd();$('dlg').showModal();
+}
+['e-s','e-e','e-p'].forEach(i=>$(i).oninput=upd);
+$('add').onclick=()=>openDlg('new');
+$('adj').onclick=()=>openDlg('run');
+$('hist').onclick=e=>{const r=e.target.closest('.row');if(r)openDlg('log',r.dataset.id)};
+$('e-x').onclick=()=>$('dlg').close();
+$('e-d').onclick=()=>{if(confirm('Supprimer cette entrée?')){S.logs=S.logs.filter(x=>x.id!==E.id);$('dlg').close();save();render()}};
+$('e-ok').onclick=()=>{
+  const st=val('e-s'),c=$('e-c').value.trim(),n=$('e-n').value.trim();
+  if(isNaN(st))return alert('Heure de début invalide');
+  if(E.mode==='run'){
+    if(st>(S.run.paused||Date.now()))return alert('Le début ne peut pas être dans le futur');
+    Object.assign(S.run,{start:st,client:c,note:n});
+  }else{
+    const en=val('e-e'),p=Math.max(0,+$('e-p').value||0)*6e4;
+    if(isNaN(en)||en<=st)return alert('La fin doit être après le début');
+    if(p>=en-st)return alert('La pause dépasse la durée');
+    const o={start:st,end:en,work:en-st-p,client:c,note:n};
+    if(E.mode==='log')Object.assign(S.logs.find(x=>x.id===E.id),o);
+    else S.logs.push(Object.assign({id:Date.now().toString(36)},o));
+  }
+  $('dlg').close();save();render();tick();
+};
 $('exp').onclick=()=>{
   const q=v=>'"'+String(v||'').replace(/"/g,'""')+'"';
-  const rows=['Date,Début,Fin,Heures,Client,Note',...[...S.logs].sort((a,b)=>a.start-b.start).map(l=>[dkey(l.start),new Date(l.start).toTimeString().slice(0,5),new Date(l.end).toTimeString().slice(0,5),((l.end-l.start)/36e5).toFixed(2),q(l.client),q(l.note)].join(','))];
+  const rows=['Date,Début,Fin,Heures,Client,Note',...[...S.logs].sort((a,b)=>a.start-b.start).map(l=>[dkey(l.start),new Date(l.start).toTimeString().slice(0,5),new Date(l.end).toTimeString().slice(0,5),((dur(l))/36e5).toFixed(2),q(l.client),q(l.note)].join(','))];
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download='heures.csv';a.click();
 };
 render();tick();setInterval(tick,1000);
